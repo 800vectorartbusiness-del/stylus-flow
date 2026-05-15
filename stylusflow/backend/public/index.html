@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Creative Stylus Webapp</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(270deg, #ff9a9e, #fad0c4, #fbc2eb, #a6c1ee);
+      background-size: 800% 800%;
+      animation: gradientBG 20s ease infinite;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    @keyframes gradientBG {
+      0% {background-position:0% 50%}
+      50% {background-position:100% 50%}
+      100% {background-position:0% 50%}
+    }
+    h2 { color: #fff; margin-top: 20px; }
+    #draw {
+      border: 2px solid #fff;
+      border-radius: 12px;
+      margin-top: 20px;
+      touch-action: none;
+    }
+    .panel {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+    .btn {
+      padding: 10px 15px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      background: rgba(255,255,255,0.3);
+      backdrop-filter: blur(10px);
+      transition: all 0.3s ease;
+      font-size: 18px;
+    }
+    .btn:hover {
+      box-shadow: 0 0 15px #fff;
+      transform: scale(1.1);
+    }
+    #qr {
+      margin-top: 20px;
+      background: #fff;
+      padding: 10px;
+      border-radius: 12px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Creative Stylus Webapp 🎨</h2>
+  <canvas id="draw" width="800" height="600"></canvas>
+
+  <div class="panel">
+    <button class="btn" id="undo">↩️</button>
+    <button class="btn" id="redo">↪️</button>
+    <button class="btn" id="brushUp">➕</button>
+    <button class="btn" id="brushDown">➖</button>
+    <button class="btn" id="color">🎨</button>
+    <button class="btn" id="clear">🗑️</button>
+    <button class="btn" id="export">💾</button>
+  </div>
+
+  <canvas id="qr"></canvas>
+  <button class="btn" id="connect">🔗 Connect</button>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+  <script>
+    // Canvas drawing
+    const canvas = document.getElementById('draw');
+    const ctx = canvas.getContext('2d');
+    let drawing = false;
+    let brushSize = 3;
+    let brushColor = '#ff69b4';
+    let history = [], redoStack = [];
+
+    function saveState() {
+      history.push(canvas.toDataURL());
+      if(history.length > 50) history.shift();
+    }
+
+    canvas.addEventListener('touchstart', e => {
+      drawing = true;
+      ctx.beginPath();
+      ctx.moveTo(e.touches[0].clientX - canvas.offsetLeft,
+                 e.touches[0].clientY - canvas.offsetTop);
+      saveState();
+    });
+
+    canvas.addEventListener('touchmove', e => {
+      if (!drawing) return;
+      ctx.lineTo(e.touches[0].clientX - canvas.offsetLeft,
+                 e.touches[0].clientY - canvas.offsetTop);
+      ctx.strokeStyle = brushColor;
+      ctx.lineWidth = brushSize;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    });
+
+    canvas.addEventListener('touchend', () => drawing = false);
+
+    // Buttons
+    document.getElementById('brushUp').onclick = () => brushSize++;
+    document.getElementById('brushDown').onclick = () => brushSize = Math.max(1, brushSize-1);
+    document.getElementById('color').onclick = () => {
+      brushColor = prompt("Enter color (hex or name):", brushColor) || brushColor;
+    };
+    document.getElementById('clear').onclick = () => ctx.clearRect(0,0,canvas.width,canvas.height);
+    document.getElementById('export').onclick = () => {
+      const link = document.createElement('a');
+      link.download = 'drawing.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    };
+    document.getElementById('undo').onclick = () => {
+      if(history.length) {
+        redoStack.push(history.pop());
+        let img = new Image();
+        img.src = history[history.length-1];
+        img.onload = () => ctx.drawImage(img,0,0);
+      }
+    };
+    document.getElementById('redo').onclick = () => {
+      if(redoStack.length) {
+        let img = new Image();
+        img.src = redoStack.pop();
+        img.onload = () => ctx.drawImage(img,0,0);
+      }
+    };
+
+    // QR Code permanent
+    const qrCanvas = document.getElementById('qr');
+    QRCode.toCanvas(qrCanvas, "ws://localhost:8080", function (error) {
+      if (error) console.error(error);
+    });
+
+    // Connect button (dummy WebSocket)
+    document.getElementById('connect').onclick = () => {
+      let ws = new WebSocket("ws://localhost:8080");
+      ws.onopen = () => alert("Connected to Laptop 🎉");
+    };
+  </script>
+</body>
+</html>
