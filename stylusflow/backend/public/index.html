@@ -13,6 +13,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
+      cursor: none; /* hide system cursor */
     }
     @keyframes gradientBG {
       0% {background-position:0% 50%}
@@ -30,12 +31,13 @@
       background: rgba(255,255,255,0.2);
     }
     #remotePointer {
-      position:absolute;
-      width:20px;
-      height:20px;
-      background:blue;
-      border-radius:50%;
-      pointer-events:none;
+      position: fixed;
+      width: 20px;
+      height: 20px;
+      background: blue;
+      border-radius: 50%;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
     }
     #qr {
       margin-top: 20px;
@@ -91,8 +93,8 @@
         ws.send(JSON.stringify({ type:"draw", x, y }));
       } else {
         if(e.touches.length === 1){
-          let x = (e.touches[0].clientX - rect.left) / rect.width;
-          let y = (e.touches[0].clientY - rect.top) / rect.height;
+          let x = e.touches[0].clientX / window.innerWidth;
+          let y = e.touches[0].clientY / window.innerHeight;
           ws.send(JSON.stringify({ type:"move", x, y }));
         }
         if(e.touches.length === 2){
@@ -128,14 +130,14 @@
     // --- Laptop side receive ---
     ws.onmessage = async (event) => {
       let raw = event.data;
-      if (raw instanceof Blob) {
-        raw = await raw.text();
-      }
+      if (raw instanceof Blob) raw = await raw.text();
       try {
         const data = JSON.parse(raw);
         if(data.type === "move") {
-          pointer.style.left = (data.x * trackpad.width) + "px";
-          pointer.style.top = (data.y * trackpad.height) + "px";
+          let pageX = data.x * window.innerWidth;
+          let pageY = data.y * window.innerHeight;
+          pointer.style.left = pageX + "px";
+          pointer.style.top = pageY + "px";
         }
         if(data.type === "click") {
           pointer.style.background = (data.action === "down") ? "red" : "blue";
