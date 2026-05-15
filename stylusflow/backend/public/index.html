@@ -142,7 +142,7 @@
 
     // Connect button (dummy WebSocket)
     document.getElementById('connect').onclick = () => {
-      let ws = new WebSocket("ws://stylus-flow.vercel.app/");
+      let ws = new WebSocket("wss://stylus-flow.vercel.app/");
       ws.onopen = () => alert("Connected to Laptop 🎉");
     };
   </script>
