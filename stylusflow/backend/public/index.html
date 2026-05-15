@@ -57,7 +57,7 @@
 </head>
 <body>
   <h2>Creative Stylus Remote Mouse 🎨</h2>
-  <div id="trackpad"></div>
+  <canvas id="trackpad" width="800" height="600"></canvas>
   <div id="remotePointer"></div>
   <canvas id="qr"></canvas>
   <button id="toggle">Switch to Drawing ✏️</button>
@@ -65,6 +65,7 @@
   <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
   <script>
     const trackpad = document.getElementById('trackpad');
+    const ctx = trackpad.getContext("2d");
     const pointer = document.getElementById('remotePointer');
     const toggleBtn = document.getElementById('toggle');
     let drawingMode = false;
@@ -124,31 +125,35 @@
     });
 
     // --- Laptop side receive ---
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if(data.type === "move") {
-        pointer.style.left = data.x + "px";
-        pointer.style.top = data.y + "px";
+    ws.onmessage = async (event) => {
+      let raw = event.data;
+      if (raw instanceof Blob) {
+        raw = await raw.text();
       }
-      if(data.type === "click") {
-        pointer.style.background = (data.action === "down") ? "red" : "blue";
-      }
-      if(data.type === "doubleclick") {
-        pointer.style.background = "green";
-        setTimeout(()=> pointer.style.background="blue", 300);
-      }
-      if(data.type === "scroll") {
-        window.scrollBy(0, data.delta/10);
-      }
-      if(data.type === "draw") {
-        // simple demo: draw trail
-        const ctx = trackpad.getContext?.("2d");
-        if(ctx){
+      try {
+        const data = JSON.parse(raw);
+        if(data.type === "move") {
+          pointer.style.left = data.x + "px";
+          pointer.style.top = data.y + "px";
+        }
+        if(data.type === "click") {
+          pointer.style.background = (data.action === "down") ? "red" : "blue";
+        }
+        if(data.type === "doubleclick") {
+          pointer.style.background = "green";
+          setTimeout(()=> pointer.style.background="blue", 300);
+        }
+        if(data.type === "scroll") {
+          window.scrollBy(0, data.delta/10);
+        }
+        if(data.type === "draw") {
           ctx.fillStyle = "black";
           ctx.beginPath();
           ctx.arc(data.x, data.y, 3, 0, Math.PI*2);
           ctx.fill();
         }
+      } catch(err) {
+        console.error("Invalid JSON:", raw);
       }
     };
 
@@ -156,6 +161,7 @@
     toggleBtn.onclick = () => {
       drawingMode = !drawingMode;
       toggleBtn.textContent = drawingMode ? "Switch to Mouse 🖱️" : "Switch to Drawing ✏️";
+      ctx.clearRect(0,0,trackpad.width,trackpad.height); // clear canvas when switching
     };
   </script>
 </body>
