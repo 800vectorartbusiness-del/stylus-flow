@@ -1,34 +1,35 @@
-// server.js
 const express = require('express');
-const http = require('http');
+const path = require('path');
 const WebSocket = require('ws');
 
 const app = express();
-const server = http.createServer(app);
+
+// Static files serve karna
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Default route
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Express server start
+const PORT = process.env.PORT || 3000;
+const server = app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
+// WebSocket server attach karna
 const wss = new WebSocket.Server({ server });
 
-// Serve frontend files (index.html, etc.)
-app.use(express.static(__dirname + '/public'));
-
-wss.on('connection', (ws) => {
-  console.log('Client connected ✅');
-
-  ws.on('message', (message) => {
-    // Stylus/touch events from phone
-    console.log('Received:', message);
-
-    // Broadcast to all connected clients (like laptop canvas)
+wss.on('connection', ws => {
+  console.log('Client connected');
+  ws.on('message', msg => {
+    console.log('Received:', msg);
+    // Broadcast to all clients
     wss.clients.forEach(client => {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
+        client.send(msg);
       }
     });
   });
-
-  ws.on('close', () => console.log('Client disconnected ❌'));
-});
-
-// Start server
-server.listen(8080, () => {
-  console.log('Server running at http://localhost:8080');
 });
