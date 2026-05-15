@@ -84,14 +84,15 @@
     let lastTap = 0;
 
     trackpad.addEventListener('touchmove', e => {
+      let rect = trackpad.getBoundingClientRect();
       if(drawingMode){
-        let x = e.touches[0].clientX;
-        let y = e.touches[0].clientY;
+        let x = (e.touches[0].clientX - rect.left) / rect.width;
+        let y = (e.touches[0].clientY - rect.top) / rect.height;
         ws.send(JSON.stringify({ type:"draw", x, y }));
       } else {
         if(e.touches.length === 1){
-          let x = e.touches[0].clientX;
-          let y = e.touches[0].clientY;
+          let x = (e.touches[0].clientX - rect.left) / rect.width;
+          let y = (e.touches[0].clientY - rect.top) / rect.height;
           ws.send(JSON.stringify({ type:"move", x, y }));
         }
         if(e.touches.length === 2){
@@ -133,8 +134,8 @@
       try {
         const data = JSON.parse(raw);
         if(data.type === "move") {
-          pointer.style.left = data.x + "px";
-          pointer.style.top = data.y + "px";
+          pointer.style.left = (data.x * trackpad.width) + "px";
+          pointer.style.top = (data.y * trackpad.height) + "px";
         }
         if(data.type === "click") {
           pointer.style.background = (data.action === "down") ? "red" : "blue";
@@ -147,9 +148,11 @@
           window.scrollBy(0, data.delta/10);
         }
         if(data.type === "draw") {
+          let realX = data.x * trackpad.width;
+          let realY = data.y * trackpad.height;
           ctx.fillStyle = "black";
           ctx.beginPath();
-          ctx.arc(data.x, data.y, 3, 0, Math.PI*2);
+          ctx.arc(realX, realY, 3, 0, Math.PI*2);
           ctx.fill();
         }
       } catch(err) {
@@ -161,7 +164,7 @@
     toggleBtn.onclick = () => {
       drawingMode = !drawingMode;
       toggleBtn.textContent = drawingMode ? "Switch to Mouse 🖱️" : "Switch to Drawing ✏️";
-      ctx.clearRect(0,0,trackpad.width,trackpad.height); // clear canvas when switching
+      ctx.clearRect(0,0,trackpad.width,trackpad.height);
     };
   </script>
 </body>
