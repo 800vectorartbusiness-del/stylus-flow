@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Creative Stylus Webapp</title>
+  <title>Creative Stylus Remote Mouse + Drawing</title>
   <style>
     body {
       margin: 0;
@@ -20,30 +20,22 @@
       100% {background-position:0% 50%}
     }
     h2 { color: #fff; margin-top: 20px; }
-    #draw {
+    #trackpad {
       border: 2px solid #fff;
       border-radius: 12px;
       margin-top: 20px;
       touch-action: none;
+      width: 800px;
+      height: 600px;
+      background: rgba(255,255,255,0.2);
     }
-    .panel {
-      display: flex;
-      gap: 10px;
-      margin-top: 15px;
-    }
-    .btn {
-      padding: 10px 15px;
-      border-radius: 50%;
-      border: none;
-      cursor: pointer;
-      background: rgba(255,255,255,0.3);
-      backdrop-filter: blur(10px);
-      transition: all 0.3s ease;
-      font-size: 18px;
-    }
-    .btn:hover {
-      box-shadow: 0 0 15px #fff;
-      transform: scale(1.1);
+    #remotePointer {
+      position:absolute;
+      width:20px;
+      height:20px;
+      background:blue;
+      border-radius:50%;
+      pointer-events:none;
     }
     #qr {
       margin-top: 20px;
@@ -51,100 +43,120 @@
       padding: 10px;
       border-radius: 12px;
     }
+    #toggle {
+      margin-top: 15px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      background: rgba(255,255,255,0.3);
+      backdrop-filter: blur(10px);
+      font-size: 16px;
+    }
   </style>
 </head>
 <body>
-  <h2>Creative Stylus Webapp 🎨</h2>
-  <canvas id="draw" width="800" height="600"></canvas>
-
-  <div class="panel">
-    <button class="btn" id="undo">↩️</button>
-    <button class="btn" id="redo">↪️</button>
-    <button class="btn" id="brushUp">➕</button>
-    <button class="btn" id="brushDown">➖</button>
-    <button class="btn" id="color">🎨</button>
-    <button class="btn" id="clear">🗑️</button>
-    <button class="btn" id="export">💾</button>
-  </div>
-
+  <h2>Creative Stylus Remote Mouse 🎨</h2>
+  <div id="trackpad"></div>
+  <div id="remotePointer"></div>
   <canvas id="qr"></canvas>
-  <button class="btn" id="connect">🔗 Connect</button>
+  <button id="toggle">Switch to Drawing ✏️</button>
 
   <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
   <script>
-    // Canvas drawing
-    const canvas = document.getElementById('draw');
-    const ctx = canvas.getContext('2d');
-    let drawing = false;
-    let brushSize = 3;
-    let brushColor = '#ff69b4';
-    let history = [], redoStack = [];
+    const trackpad = document.getElementById('trackpad');
+    const pointer = document.getElementById('remotePointer');
+    const toggleBtn = document.getElementById('toggle');
+    let drawingMode = false;
 
-    function saveState() {
-      history.push(canvas.toDataURL());
-      if(history.length > 50) history.shift();
-    }
-
-    canvas.addEventListener('touchstart', e => {
-      drawing = true;
-      ctx.beginPath();
-      ctx.moveTo(e.touches[0].clientX - canvas.offsetLeft,
-                 e.touches[0].clientY - canvas.offsetTop);
-      saveState();
-    });
-
-    canvas.addEventListener('touchmove', e => {
-      if (!drawing) return;
-      ctx.lineTo(e.touches[0].clientX - canvas.offsetLeft,
-                 e.touches[0].clientY - canvas.offsetTop);
-      ctx.strokeStyle = brushColor;
-      ctx.lineWidth = brushSize;
-      ctx.lineCap = 'round';
-      ctx.stroke();
-    });
-
-    canvas.addEventListener('touchend', () => drawing = false);
-
-    // Buttons
-    document.getElementById('brushUp').onclick = () => brushSize++;
-    document.getElementById('brushDown').onclick = () => brushSize = Math.max(1, brushSize-1);
-    document.getElementById('color').onclick = () => {
-      brushColor = prompt("Enter color (hex or name):", brushColor) || brushColor;
-    };
-    document.getElementById('clear').onclick = () => ctx.clearRect(0,0,canvas.width,canvas.height);
-    document.getElementById('export').onclick = () => {
-      const link = document.createElement('a');
-      link.download = 'drawing.png';
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-    };
-    document.getElementById('undo').onclick = () => {
-      if(history.length) {
-        redoStack.push(history.pop());
-        let img = new Image();
-        img.src = history[history.length-1];
-        img.onload = () => ctx.drawImage(img,0,0);
-      }
-    };
-    document.getElementById('redo').onclick = () => {
-      if(redoStack.length) {
-        let img = new Image();
-        img.src = redoStack.pop();
-        img.onload = () => ctx.drawImage(img,0,0);
-      }
-    };
+    // WebSocket connect
+    let ws = new WebSocket("wss://stylus-flow-yuxj.onrender.com");
+    ws.onopen = () => console.log("Connected ✅");
 
     // QR Code permanent
     const qrCanvas = document.getElementById('qr');
     QRCode.toCanvas(qrCanvas, "https://stylus-flow-yuxj.onrender.com/", function (error) {
-    if (error) console.error(error);
-});
+      if (error) console.error(error);
+    });
 
-let ws = new WebSocket("wss://stylus-flow-yuxj.onrender.com");
-ws.onopen = () => alert("Connected to Laptop 🎉");
+    // --- Phone side events ---
+    let lastTap = 0;
 
+    trackpad.addEventListener('touchmove', e => {
+      if(drawingMode){
+        let x = e.touches[0].clientX;
+        let y = e.touches[0].clientY;
+        ws.send(JSON.stringify({ type:"draw", x, y }));
+      } else {
+        if(e.touches.length === 1){
+          let x = e.touches[0].clientX;
+          let y = e.touches[0].clientY;
+          ws.send(JSON.stringify({ type:"move", x, y }));
+        }
+        if(e.touches.length === 2){
+          let dy = e.touches[0].clientY - e.touches[1].clientY;
+          ws.send(JSON.stringify({ type:"scroll", delta: dy }));
+        }
+      }
+    });
 
-    
+    trackpad.addEventListener('touchstart', e => {
+      if(!drawingMode){
+        let currentTime = new Date().getTime();
+        let tapLength = currentTime - lastTap;
+        if (tapLength < 300 && tapLength > 0) {
+          ws.send(JSON.stringify({ type:"doubleclick" }));
+        } else {
+          ws.send(JSON.stringify({ type:"click", action:"down" }));
+        }
+        lastTap = currentTime;
+      } else {
+        ws.send(JSON.stringify({ type:"drawstart" }));
+      }
+    });
+
+    trackpad.addEventListener('touchend', e => {
+      if(!drawingMode){
+        ws.send(JSON.stringify({ type:"click", action:"up" }));
+      } else {
+        ws.send(JSON.stringify({ type:"drawend" }));
+      }
+    });
+
+    // --- Laptop side receive ---
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if(data.type === "move") {
+        pointer.style.left = data.x + "px";
+        pointer.style.top = data.y + "px";
+      }
+      if(data.type === "click") {
+        pointer.style.background = (data.action === "down") ? "red" : "blue";
+      }
+      if(data.type === "doubleclick") {
+        pointer.style.background = "green";
+        setTimeout(()=> pointer.style.background="blue", 300);
+      }
+      if(data.type === "scroll") {
+        window.scrollBy(0, data.delta/10);
+      }
+      if(data.type === "draw") {
+        // simple demo: draw trail
+        const ctx = trackpad.getContext?.("2d");
+        if(ctx){
+          ctx.fillStyle = "black";
+          ctx.beginPath();
+          ctx.arc(data.x, data.y, 3, 0, Math.PI*2);
+          ctx.fill();
+        }
+      }
+    };
+
+    // Toggle mode
+    toggleBtn.onclick = () => {
+      drawingMode = !drawingMode;
+      toggleBtn.textContent = drawingMode ? "Switch to Mouse 🖱️" : "Switch to Drawing ✏️";
+    };
   </script>
 </body>
 </html>
