@@ -136,13 +136,13 @@
 
     // QR Code permanent
     const qrCanvas = document.getElementById('qr');
-    QRCode.toCanvas(qrCanvas, "ws://localhost:8080", function (error) {
+    QRCode.toCanvas(qrCanvas, "https://stylus-flow-pro.vercel.app/", function (error) {
       if (error) console.error(error);
     });
 
     // Connect button (dummy WebSocket)
     document.getElementById('connect').onclick = () => {
-      let ws = new WebSocket("ws://localhost:8080");
+      let ws = new WebSocket("wss://stylus-flow-pro.vercel.app/");
       ws.onopen = () => alert("Connected to Laptop 🎉");
     };
   </script>
