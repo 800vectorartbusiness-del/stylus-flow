@@ -1,263 +1,173 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Creative Stylus Remote Mouse + Drawing (FIXED)</title>
-
-<style>
-body {
-  margin: 0;
-  font-family: 'Poppins', sans-serif;
-  background: linear-gradient(270deg, #ff9a9e, #fad0c4, #fbc2eb, #a6c1ee);
-  background-size: 800% 800%;
-  animation: gradientBG 20s ease infinite;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  cursor: none;
-}
-
-@keyframes gradientBG {
-  0% {background-position:0% 50%}
-  50% {background-position:100% 50%}
-  100% {background-position:0% 50%}
-}
-
-h2 { color: #fff; margin-top: 20px; }
-
-#trackpad {
-  border: 2px solid #fff;
-  border-radius: 12px;
-  margin-top: 20px;
-  touch-action: none;
-  width: 800px;
-  height: 600px;
-  background: rgba(255,255,255,0.2);
-}
-
-#remotePointer {
-  position: fixed;
-  width: 20px;
-  height: 20px;
-  background: blue;
-  border-radius: 50%;
-  pointer-events: none;
-  transform: translate(-50%, -50%);
-  z-index: 9999;
-}
-
-#toggle {
-  margin-top: 15px;
-  padding: 10px 20px;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-}
-</style>
+  <meta charset="UTF-8">
+  <title>Creative Stylus Remote Mouse + Drawing</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(270deg, #ff9a9e, #fad0c4, #fbc2eb, #a6c1ee);
+      background-size: 800% 800%;
+      animation: gradientBG 20s ease infinite;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: none; /* hide system cursor */
+    }
+    @keyframes gradientBG {
+      0% {background-position:0% 50%}
+      50% {background-position:100% 50%}
+      100% {background-position:0% 50%}
+    }
+    h2 { color: #fff; margin-top: 20px; }
+    #trackpad {
+      border: 2px solid #fff;
+      border-radius: 12px;
+      margin-top: 20px;
+      touch-action: none;
+      width: 800px;
+      height: 600px;
+      background: rgba(255,255,255,0.2);
+    }
+    #remotePointer {
+      position: fixed;
+      width: 20px;
+      height: 20px;
+      background: blue;
+      border-radius: 50%;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+    }
+    #qr {
+      margin-top: 20px;
+      background: #fff;
+      padding: 10px;
+      border-radius: 12px;
+    }
+    #toggle {
+      margin-top: 15px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      background: rgba(255,255,255,0.3);
+      backdrop-filter: blur(10px);
+      font-size: 16px;
+    }
+  </style>
 </head>
-
 <body>
+  <h2>Creative Stylus Remote Mouse 🎨</h2>
+  <canvas id="trackpad" width="800" height="600"></canvas>
+  <div id="remotePointer"></div>
+  <canvas id="qr"></canvas>
+  <button id="toggle">Switch to Drawing ✏️</button>
 
-<h2>Creative Stylus Remote Mouse 🎨</h2>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+  <script>
+    const trackpad = document.getElementById('trackpad');
+    const ctx = trackpad.getContext("2d");
+    const pointer = document.getElementById('remotePointer');
+    const toggleBtn = document.getElementById('toggle');
+    let drawingMode = false;
 
-<canvas id="trackpad" width="800" height="600"></canvas>
-<div id="remotePointer"></div>
-<button id="toggle">Switch to Drawing ✏️</button>
+    // WebSocket connect
+    let ws = new WebSocket("wss://stylus-flow-yuxj.onrender.com");
+    ws.onopen = () => console.log("Connected ✅");
 
-<script>
-const trackpad = document.getElementById("trackpad");
-const ctx = trackpad.getContext("2d");
-const pointer = document.getElementById("remotePointer");
-const toggleBtn = document.getElementById("toggle");
+    // QR Code permanent
+    const qrCanvas = document.getElementById('qr');
+    QRCode.toCanvas(qrCanvas, "https://stylus-flow-yuxj.onrender.com/", function (error) {
+      if (error) console.error(error);
+    });
 
-let ws = new WebSocket("wss://stylus-flow-yuxj.onrender.com");
+    // --- Phone side events ---
+    let lastTap = 0;
 
-let drawingMode = false;
-let isDrawing = false;
+    trackpad.addEventListener('touchmove', e => {
+      let rect = trackpad.getBoundingClientRect();
+      if(drawingMode){
+        let x = (e.touches[0].clientX - rect.left) / rect.width;
+        let y = (e.touches[0].clientY - rect.top) / rect.height;
+        ws.send(JSON.stringify({ type:"draw", x, y }));
+      } else {
+        if(e.touches.length === 1){
+          let x = e.touches[0].clientX / window.innerWidth;
+          let y = e.touches[0].clientY / window.innerHeight;
+          ws.send(JSON.stringify({ type:"move", x, y }));
+        }
+        if(e.touches.length === 2){
+          let dy = e.touches[0].clientY - e.touches[1].clientY;
+          ws.send(JSON.stringify({ type:"scroll", delta: dy }));
+        }
+      }
+    });
 
-// 🔥 FIX: proper coordinate mapping
-function getPos(e){
-  let rect = trackpad.getBoundingClientRect();
-  return {
-    x: (e.touches[0].clientX - rect.left) / rect.width,
-    y: (e.touches[0].clientY - rect.top) / rect.height
-  };
-}
+    trackpad.addEventListener('touchstart', e => {
+      if(!drawingMode){
+        let currentTime = new Date().getTime();
+        let tapLength = currentTime - lastTap;
+        if (tapLength < 300 && tapLength > 0) {
+          ws.send(JSON.stringify({ type:"doubleclick" }));
+        } else {
+          ws.send(JSON.stringify({ type:"click", action:"down" }));
+        }
+        lastTap = currentTime;
+      } else {
+        ws.send(JSON.stringify({ type:"drawstart" }));
+      }
+    });
 
-// MODE TOGGLE (❌ NO CLEAR CANVAS NOW)
-toggleBtn.onclick = () => {
-  drawingMode = !drawingMode;
-  toggleBtn.textContent = drawingMode
-    ? "Switch to Mouse 🖱️"
-    : "Switch to Drawing ✏️";
-};
+    trackpad.addEventListener('touchend', e => {
+      if(!drawingMode){
+        ws.send(JSON.stringify({ type:"click", action:"up" }));
+      } else {
+        ws.send(JSON.stringify({ type:"drawend" }));
+      }
+    });
 
-// TOUCH START
-trackpad.addEventListener("touchstart", (e) => {
-  let p = getPos(e);
+    // --- Laptop side receive ---
+    ws.onmessage = async (event) => {
+      let raw = event.data;
+      if (raw instanceof Blob) raw = await raw.text();
+      try {
+        const data = JSON.parse(raw);
+        if(data.type === "move") {
+          let pageX = data.x * window.innerWidth;
+          let pageY = data.y * window.innerHeight;
+          pointer.style.left = pageX + "px";
+          pointer.style.top = pageY + "px";
+        }
+        if(data.type === "click") {
+          pointer.style.background = (data.action === "down") ? "red" : "blue";
+        }
+        if(data.type === "doubleclick") {
+          pointer.style.background = "green";
+          setTimeout(()=> pointer.style.background="blue", 300);
+        }
+        if(data.type === "scroll") {
+          window.scrollBy(0, data.delta/10);
+        }
+        if(data.type === "draw") {
+          let realX = data.x * trackpad.width;
+          let realY = data.y * trackpad.height;
+          ctx.fillStyle = "black";
+          ctx.beginPath();
+          ctx.arc(realX, realY, 3, 0, Math.PI*2);
+          ctx.fill();
+        }
+      } catch(err) {
+        console.error("Invalid JSON:", raw);
+      }
+    };
 
-  if (drawingMode) {
-    isDrawing = true;
-    ws.send(JSON.stringify({ type: "drawstart" }));
-  } else {
-    ws.send(JSON.stringify({ type: "click", action: "down" }));
-  }
-
-  ws.send(JSON.stringify({ type: "move", x: p.x, y: p.y }));
-});
-
-// TOUCH MOVE
-trackpad.addEventListener("touchmove", (e) => {
-  let p = getPos(e);
-
-  if (drawingMode && isDrawing) {
-    ws.send(JSON.stringify({ type: "draw", x: p.x, y: p.y }));
-  } else {
-    ws.send(JSON.stringify({ type: "move", x: p.x, y: p.y }));
-  }
-});
-
-// TOUCH END
-trackpad.addEventListener("touchend", () => {
-  if (drawingMode) {
-    isDrawing = false;
-    ws.send(JSON.stringify({ type: "drawend" }));
-  } else {
-    ws.send(JSON.stringify({ type: "click", action: "up" }));
-  }
-});
-</script>
-
-</body>
-</html><!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Creative Stylus Remote Mouse + Drawing (FIXED)</title>
-
-<style>
-body {
-  margin: 0;
-  font-family: 'Poppins', sans-serif;
-  background: linear-gradient(270deg, #ff9a9e, #fad0c4, #fbc2eb, #a6c1ee);
-  background-size: 800% 800%;
-  animation: gradientBG 20s ease infinite;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  cursor: none;
-}
-
-@keyframes gradientBG {
-  0% {background-position:0% 50%}
-  50% {background-position:100% 50%}
-  100% {background-position:0% 50%}
-}
-
-h2 { color: #fff; margin-top: 20px; }
-
-#trackpad {
-  border: 2px solid #fff;
-  border-radius: 12px;
-  margin-top: 20px;
-  touch-action: none;
-  width: 800px;
-  height: 600px;
-  background: rgba(255,255,255,0.2);
-}
-
-#remotePointer {
-  position: fixed;
-  width: 20px;
-  height: 20px;
-  background: blue;
-  border-radius: 50%;
-  pointer-events: none;
-  transform: translate(-50%, -50%);
-  z-index: 9999;
-}
-
-#toggle {
-  margin-top: 15px;
-  padding: 10px 20px;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-}
-</style>
-</head>
-
-<body>
-
-<h2>Creative Stylus Remote Mouse 🎨</h2>
-
-<canvas id="trackpad" width="800" height="600"></canvas>
-<div id="remotePointer"></div>
-<button id="toggle">Switch to Drawing ✏️</button>
-
-<script>
-const trackpad = document.getElementById("trackpad");
-const ctx = trackpad.getContext("2d");
-const pointer = document.getElementById("remotePointer");
-const toggleBtn = document.getElementById("toggle");
-
-let ws = new WebSocket("wss://stylus-flow-yuxj.onrender.com");
-
-let drawingMode = false;
-let isDrawing = false;
-
-// 🔥 FIX: proper coordinate mapping
-function getPos(e){
-  let rect = trackpad.getBoundingClientRect();
-  return {
-    x: (e.touches[0].clientX - rect.left) / rect.width,
-    y: (e.touches[0].clientY - rect.top) / rect.height
-  };
-}
-
-// MODE TOGGLE (❌ NO CLEAR CANVAS NOW)
-toggleBtn.onclick = () => {
-  drawingMode = !drawingMode;
-  toggleBtn.textContent = drawingMode
-    ? "Switch to Mouse 🖱️"
-    : "Switch to Drawing ✏️";
-};
-
-// TOUCH START
-trackpad.addEventListener("touchstart", (e) => {
-  let p = getPos(e);
-
-  if (drawingMode) {
-    isDrawing = true;
-    ws.send(JSON.stringify({ type: "drawstart" }));
-  } else {
-    ws.send(JSON.stringify({ type: "click", action: "down" }));
-  }
-
-  ws.send(JSON.stringify({ type: "move", x: p.x, y: p.y }));
-});
-
-// TOUCH MOVE
-trackpad.addEventListener("touchmove", (e) => {
-  let p = getPos(e);
-
-  if (drawingMode && isDrawing) {
-    ws.send(JSON.stringify({ type: "draw", x: p.x, y: p.y }));
-  } else {
-    ws.send(JSON.stringify({ type: "move", x: p.x, y: p.y }));
-  }
-});
-
-// TOUCH END
-trackpad.addEventListener("touchend", () => {
-  if (drawingMode) {
-    isDrawing = false;
-    ws.send(JSON.stringify({ type: "drawend" }));
-  } else {
-    ws.send(JSON.stringify({ type: "click", action: "up" }));
-  }
-});
-</script>
-
+    // Toggle mode
+    toggleBtn.onclick = () => {
+      drawingMode = !drawingMode;
+      toggleBtn.textContent = drawingMode ? "Switch to Mouse 🖱️" : "Switch to Drawing ✏️";
+      
+    };
+  </script>
 </body>
 </html>
